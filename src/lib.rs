@@ -3,8 +3,27 @@
 //        (See accompanying file LICENSE or copy at
 //          https://www.boost.org/LICENSE_1_0.txt)
 
-//! A pure-Rust implementation of the [Bentley-Ottmann algorithm] for finding intersections between
-//! line segments.
+//! A pure-Rust implementation of the [Bentley-Ottmann algorithm] for 
+//! finding intersections between line segments.
+//! 
+//! The Bentley-Ottmann algorithm finds the intersections between a set of
+//! line segments. It operates in `O((n + k) log n)` time. It functions
+//! by creating a set of "start", "stop" and "intersect" events, and then
+//! using a priority queue of those events to calculate which lines
+//! should be considered for intersection.
+//! 
+//! The algorithm operates under certain assumptions.
+//! 
+//! - There are no vertical segments (e.g. segments with the same two `x`
+//!   coordinates).
+//! - Segments that intersect at their endpoints are not considered.
+//! - Three or more lines do not share a common intersection.
+//! - No two lines intersect at the same point.
+//! 
+//! The [`bentley_ottmann`] function runs the algorithm in the form of
+//! an iterator over the intersections. Certain applications may find
+//! the [`bentley_ottmann_events`] function, which iterates over *all*
+//! of the events instead of just intersections, more useful.
 //!
 //! [Bentley-Ottmann algorithm]: https://en.wikipedia.org/wiki/Bentley%E2%80%93Ottmann_algorithm
 
@@ -13,22 +32,26 @@
 
 extern crate alloc;
 
-use ahash::RandomState;
-use alloc::{borrow::ToOwned, collections::BinaryHeap, vec::Vec};
+use alloc::{collections::BinaryHeap, vec::Vec};
 use core::{
-    cell::{Cell, RefCell},
+    cell::Cell,
     cmp::{self, Reverse},
     iter::FusedIterator,
     num::NonZeroUsize,
 };
-use geometry::{Edge, Line, Point2D, Scalar};
-use hashbrown::HashSet as HbHashSet;
+use geometry::{Edge, Line, Point2D, Scalar, Slope};
 use num_traits::Bounded;
 
 mod compare;
 use compare::AbsoluteEq;
 
 /// The whole point.
+/// 
+/// This function iterates over the intersections between the given
+/// line segments. It returns an iterator over the intersections.
+/// 
+/// The iterator does not yield intersections lazily; the entire 
+/// `segments` iterator is consumed before the iterator is created.
 pub fn bentley_ottmann<Num: Scalar + Bounded>(
     segments: impl IntoIterator<Item = Edge<Num>>,
 ) -> impl FusedIterator<Item = Point2D<Num>> {
@@ -42,16 +65,22 @@ pub fn bentley_ottmann<Num: Scalar + Bounded>(
 }
 
 /// Get an iterator over the Bentley-Ottmann algorithm's output.
+/// 
+/// This function returns an iterator over the Bentley-Ottmann algorithm's
+/// events. The iterator yields all of the events, not just intersections.
+/// 
+/// The iterator does not yield intersections lazily; the entire
+/// `segments` iterator is consumed before the iterator is created.
 pub fn bentley_ottmann_events<Num: Scalar + Bounded>(
     segments: impl IntoIterator<Item = Edge<Num>>,
-) -> impl FusedIterator<Item = Event<Num>> {
+) -> BentleyOttmann<Num> { 
     // collect the segments into an edge list
     let edges = segments
         .into_iter()
         .filter(|edge| {
             // edges with horizontal are forbidden
-            if cfg!(debug_assertions) && edge.line.vector.y.is_zero() {
-                tracing::error!("Could not process horizontal edge: {:?}", edge);
+            if cfg!(debug_assertions) && edge.line.vector.x.is_zero() {
+                tracing::error!("Could not process vertical edge: {:?}", edge);
                 false
             } else {
                 true
@@ -91,8 +120,40 @@ pub fn bentley_ottmann_events<Num: Scalar + Bounded>(
     }
 }
 
+/// An event that may occur in the Bentley-Ottmann algorithm.
+pub struct Event<Num> {
+    /// The edge that this event is associated with.
+    pub edge: Edge<Num>,
+    /// The event type.
+    pub event_type: EventType<Num>,
+    /// The point that this event is associated with.
+    pub point: Point2D<Num>,
+    /// The index of the edge that this event is associated with.
+    /// 
+    /// It is shifted up by one so that we can take advantage
+    /// of niching the `NonZeroUsize` structure.
+    pub edge_id: NonZeroUsize,
+}
+
+/// The type of event that may occur in the Bentley-Ottmann algorithm.
+pub enum EventType<Num> {
+    /// A start event, or the beginning of a segment.
+    Start,
+    /// A stop event, or the end of a segment.
+    Stop,
+    /// An intersection event.
+    Intersection {
+        /// The other edge we intersect with.
+        other_edge: Edge<Num>,
+        /// The other ID of the edge we intersect with.
+        other_edge_id: NonZeroUsize,
+    },
+}
+
 /// An iterator over the Bentley-Ottmann algorithm's output.
-struct BentleyOttmann<Num> {
+/// 
+/// This is the iterator returned by [`bentley_ottmann_events`].
+pub struct BentleyOttmann<Num> {
     /// All of the edges currently in the algorithm.
     edges: Edges<Num>,
     /// The current sweep line.
@@ -148,7 +209,44 @@ impl<Num: Scalar> Iterator for BentleyOttmann<Num> {
                         .map(|event| Reverse(AbsoluteEq(EventOrder(event)))),
                 );
             }
-            _ => todo!(),
+            EventType::Stop => {
+                // remove the event from the sweep line
+                let edge = self.edges.get(event.edge_id);
+                let prev = edge.prev(&self.edges);
+                let next = edge.next(&self.edges);
+                self.sweep_line.remove(edge, &self.edges);
+
+                if let (Some(prev), Some(next)) = (prev, next) {
+                    // insert intersection between them
+                    self.event_queue.extend(
+                        intersection_event(prev, next)
+                            .map(|event| Reverse(AbsoluteEq(EventOrder(event)))),
+                    );
+                }
+            }
+            EventType::Intersection { other_edge_id, .. } => {
+                // swap thw two edges in the sweep line
+                let edge = self.edges.get(event.edge_id);
+                let other_edge = self.edges.get(other_edge_id);
+                self.sweep_line.swap(edge, other_edge, &self.edges);
+
+                // make sure the edges are adjacent (they should be)
+                if edge.next.get() == Some(other_edge_id) {
+                    // add intersections between adjacent events
+                    let prev = edge
+                        .prev(&self.edges)
+                        .and_then(|prev| intersection_event(prev, edge));
+                    let next = other_edge
+                        .next(&self.edges)
+                        .and_then(|next| intersection_event(other_edge, next));
+
+                    self.event_queue.extend(
+                        prev.into_iter()
+                            .chain(next)
+                            .map(|event| Reverse(AbsoluteEq(EventOrder(event)))),
+                    );
+                }
+            }
         }
 
         // return the event
@@ -175,30 +273,52 @@ impl<Num: Scalar> FusedIterator for BentleyOttmann<Num> {}
 ///
 /// This function will return `None` if the lines are parallel.
 fn intersection_event<Num: Scalar>(line1: &BoEdge<Num>, line2: &BoEdge<Num>) -> Option<Event<Num>> {
-    todo!()
+    // tell if the lines even can be intersected
+    if line1.highest_x.x <= line2.lowest_x.x {
+        return None;
+    }
+
+    // equal lines are not intersected
+    if line1.segment.line.point == line2.segment.line.point
+        && line1.segment.line.vector == line2.segment.line.vector
+    {
+        return None;
+    }
+
+    // compare slopes to ensure the event is valid by using slopes to
+    // try to see if the intersection has already occurred
+    match Slope::from_line(line1.segment.line).partial_cmp(&Slope::from_line(line2.segment.line)) {
+        Some(cmp::Ordering::Greater) => {}
+        _ => return None,
+    }
+
+    // calculate the intersection point
+    let intersect = line1.segment.line.intersection(&line2.segment.line)?;
+
+    // if the intersection is outside the bounds of the lines, it
+    // should be ignored
+    if (line1.segment.top..line1.segment.bottom).contains(&intersect.y)
+        && (line2.segment.top..line2.segment.bottom).contains(&intersect.y)
+    {
+        Some(Event {
+            point: intersect,
+            event_type: EventType::Intersection {
+                other_edge: line2.segment,
+                other_edge_id: line2.id,
+            },
+            edge_id: line1.id,
+            edge: line1.segment,
+        })
+    } else {
+        None
+    }
 }
 
-/// An event that may occur in the Bentley-Ottmann algorithm.
-pub struct Event<Num> {
-    /// The edge that this event is associated with.
-    pub edge: Edge<Num>,
-    /// The event type.
-    pub event_type: EventType<Num>,
-    /// The point that this event is associated with.
-    pub point: Point2D<Num>,
-    /// The index of the edge that this event is associated with.
-    pub edge_id: NonZeroUsize,
-}
-
-pub enum EventType<Num> {
-    Start,
-    Stop,
-    Intersection {
-        other_edge: Edge<Num>,
-        other_edge_id: NonZeroUsize,
-    },
-}
-
+/// A transparent struct to ensure that the event is ordered by its
+/// X coordinate.
+/// 
+/// This allows the priority queue to function properly and yield
+/// events in X order.
 #[repr(transparent)]
 struct EventOrder<Num>(Event<Num>);
 
@@ -233,12 +353,6 @@ impl<Num> Edges<Num> {
             .expect("Edge index out of bounds")
     }
 
-    fn get_mut(&mut self, index: NonZeroUsize) -> &mut BoEdge<Num> {
-        self.edges
-            .get_mut(index.get() - 1)
-            .expect("Edge index out of bounds")
-    }
-
     fn next_of(&self, edge: &BoEdge<Num>) -> Option<&BoEdge<Num>> {
         edge.next.get().map(|next| self.get(next))
     }
@@ -249,6 +363,9 @@ impl<Num> Edges<Num> {
 }
 
 /// The sweep line algorithm.
+/// 
+/// This contains the current Y coordinate of the sweep line and the
+/// list of edges that are currently being processed.
 struct SweepLine<Num> {
     /// The head of the linked list making of the edges.
     head: EdgeId,
@@ -446,16 +563,8 @@ impl<Num> BoEdge<Num> {
         self.prev.set(Some(prev));
     }
 
-    fn clear_prev(&self) {
-        self.prev.set(None);
-    }
-
     fn link_next(&self, next: NonZeroUsize) {
         self.next.set(Some(next));
-    }
-
-    fn clear_next(&self) {
-        self.next.set(None);
     }
 
     fn next<'all>(&self, all: &'all Edges<Num>) -> Option<&'all BoEdge<Num>> {
@@ -498,6 +607,5 @@ fn x_for_y<Num: Scalar>(line: &Line<Num>, y: Num) -> Num {
 }
 
 type EdgeId = Option<NonZeroUsize>;
-type HashSet<K, V> = HbHashSet<K, V, RandomState>;
 
 const EXPECTED_NOT_NAN: &str = "Expected non-NaN values";
