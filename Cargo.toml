@@ -17,3 +17,6 @@ tracing = { version = "0.1.35", default-features = false }
 package = "chalkboard-geometry"
 path = "../chalkboard/chalkboard-geometry"
 default-features = false
+
+[dev-dependencies]
+tracing-subscriber = "0.3.15"

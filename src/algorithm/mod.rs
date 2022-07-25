@@ -20,6 +20,9 @@
 //! The rest of the crate provides an iterator-oriented interface to the
 //! Bentley-Ottmann algorithm.
 
+#[cfg(test)]
+mod tests;
+
 use super::compare::{self, AbsoluteEq};
 use crate::{Event, EventType};
 use alloc::{collections::BinaryHeap, vec::Vec};
@@ -120,8 +123,12 @@ impl<Num: Scalar> Algorithm<Num> {
     }
 
     pub(crate) fn next_event<const GEN_TRAPS: bool>(&mut self) -> Option<Event<Num>> {
+        let _span = tracing::trace_span!("next_event");
+        let _guard = _span.enter();
+
         // pop an event from the event queue
         let Reverse(AbsoluteEq(EventOrder(event))) = self.event_queue.pop()?;
+        tracing::trace!("Fetched event: {:#?}", &event);
 
         // check to ensure if we need to complete any trapezoids
         if approx_neq(self.sweep_line.current_y, event.point.y) && GEN_TRAPS {
@@ -207,19 +214,24 @@ impl<Num: Scalar> Algorithm<Num> {
             }
         }
 
-        // insert intersections with edges before and after this edge
-        let prev = edge
-            .prev(&self.edges)
-            .and_then(|prev| intersection_event(prev, edge));
-        let next = edge
-            .next(&self.edges)
-            .and_then(|next| intersection_event(edge, next));
+        tracing::trace!("Handling edge start event: {}", &event.edge_id);
 
-        self.event_queue.extend(
-            prev.into_iter()
-                .chain(next)
-                .map(|event| Reverse(AbsoluteEq(EventOrder(event)))),
-        );
+        // insert intersections with edges before and after this edge
+        let prev = edge.prev(&self.edges).and_then(|prev| {
+            tracing::trace!("Identified previous edge: {}", &prev.id);
+            intersection_event(prev, edge)
+        });
+        let next = edge.next(&self.edges).and_then(|next| {
+            tracing::trace!("Identified next edge: {}", &next.id);
+            intersection_event(edge, next)
+        });
+
+        let iter = prev
+            .into_iter()
+            .chain(next)
+            .map(|event| Reverse(AbsoluteEq(EventOrder(event))));
+
+        self.event_queue.extend(iter);
     }
 
     fn handle_stop_event<const GEN_TRAPS: bool>(&mut self, event: &Event<Num>) {

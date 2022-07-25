@@ -37,6 +37,38 @@
 //! the [`bentley_ottmann_events`] function, which iterates over *all*
 //! of the events instead of just intersections, more useful.
 //!
+//! ## Examples
+//!
+//! ```rust
+//! use bentley_ottmann::bentley_ottmann;
+//! use geometry::{Direction, Edge, Line, Point2D, Vector2D};
+//!
+//! let edges = vec![
+//!     Edge {
+//!        line: Line {
+//!           point: Point2D::new(0.0, 0.0),
+//!           vector: Vector2D::new(1.0, 2.0),
+//!        },
+//!        top: 0.0,
+//!        bottom: 2.0,
+//!        direction: Direction::Forward,
+//!     },
+//!     Edge {
+//!        line: Line {
+//!           point: Point2D::new(0.0, 2.0),
+//!           vector: Vector2D::new(1.0, -2.0),
+//!        },
+//!        top: 0.0,
+//!        bottom: 2.0,
+//!        direction: Direction::Forward,
+//!     },
+//! ];
+//!
+//! let mut intersects = bentley_ottmann(edges);
+//! assert_eq!(intersects.next(), Some(Point2D::new(0.5, 1.0)));
+//! assert_eq!(intersects.next(), None);
+//! ```
+//!
 //! [Bentley-Ottmann algorithm]: https://en.wikipedia.org/wiki/Bentley%E2%80%93Ottmann_algorithm
 
 #![no_std]
@@ -45,7 +77,7 @@
 extern crate alloc;
 
 use core::{iter::FusedIterator, num::NonZeroUsize};
-use geometry::{Edge, Point2D, Scalar, FillRule, Trapezoid};
+use geometry::{Edge, FillRule, Point2D, Scalar, Trapezoid};
 use num_traits::Bounded;
 
 mod algorithm;
@@ -81,30 +113,25 @@ pub fn bentley_ottmann_events<Num: Scalar + Bounded + Default>(
     segments: impl IntoIterator<Item = Edge<Num>>,
 ) -> BentleyOttmann<Num> {
     BentleyOttmann {
-        inner: algorithm::Algorithm::new(
-            segments.into_iter(),
-            {
-                // doesn't matter, we're not tesselating
-                FillRule::Winding
-            }
-        ),
+        inner: algorithm::Algorithm::new(segments.into_iter(), {
+            // doesn't matter, we're not tesselating
+            FillRule::Winding
+        }),
     }
 }
 
 /// Rasterizes the polygon defined by the edges into trapezoids.
 pub fn trapezoids<Num: Scalar + Bounded + Default>(
     segments: impl IntoIterator<Item = Edge<Num>>,
-    fill_rule: FillRule
+    fill_rule: FillRule,
 ) -> Trapezoids<Num> {
     Trapezoids {
-        inner: algorithm::Algorithm::new(
-            segments.into_iter(),
-            fill_rule
-        )
+        inner: algorithm::Algorithm::new(segments.into_iter(), fill_rule),
     }
 }
 
 /// An event that may occur in the Bentley-Ottmann algorithm.
+#[derive(Debug, Clone)]
 pub struct Event<Num> {
     /// The edge that this event is associated with.
     pub edge: Edge<Num>,
@@ -120,6 +147,7 @@ pub struct Event<Num> {
 }
 
 /// The type of event that may occur in the Bentley-Ottmann algorithm.
+#[derive(Debug, Clone)]
 pub enum EventType<Num> {
     /// A start event, or the beginning of a segment.
     Start,
@@ -162,16 +190,14 @@ impl<Num: Scalar> Iterator for Trapezoids<Num> {
     type Item = Trapezoid<Num>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next_trap() 
+        self.inner.next_trap()
     }
-    
+
     fn size_hint(&self) -> (usize, Option<usize>) {
         let traps = self.inner.pending_traps();
         (
             traps,
-            Some(traps.saturating_add(
-                self.inner.queue_len().saturating_mul(2)
-            ))
+            Some(traps.saturating_add(self.inner.queue_len().saturating_mul(2))),
         )
     }
 }
