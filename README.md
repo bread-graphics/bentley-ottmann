@@ -6,4 +6,4 @@ This crate provides a `no_std`, fully safe, pure-Rust implementation of the Bent
 
 ## License
 
-Distributed under the Boost Software License, Version 1.0. See the accompanying [`LICENSE`](LICENSE) file or copy at https://www.boost.org/LICENSE_1_0.txt
+This library is free software released under the GNU Lesser General Public License version 3, or (at your option) any later version. See the [`LICENSE`](LICENSE) file for more information.

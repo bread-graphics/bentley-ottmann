@@ -1,4 +1,19 @@
-// BSL 1.0 License
+// This file is part of bentley-ottmann.
+//
+// bentley-ottmann is free software: you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation,
+// either version 3 of the License, or (at your option)
+// any later version.
+//
+// bentley-ottmann is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty
+// of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+// See the GNU Lesser General Public License for more details.
+//
+// You should have received a copy of the GNU Lesser General
+// Public License along with bentley-ottmann. If not, see
+// <https://www.gnu.org/licenses/>.
 
 //! Rust makes comparing objects (especially floats) hard
 //! sometimes, so this module contains some wrapper structs
