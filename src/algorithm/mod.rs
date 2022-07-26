@@ -65,7 +65,7 @@ impl<Num: Scalar + Bounded + Default> Algorithm<Num> {
             .into_iter()
             .filter(|edge| {
                 // edges with horizontal are forbidden
-                if cfg!(debug_assertions) && edge.line.vector.x.is_zero() {
+                if edge.line.vector.y.is_zero() {
                     tracing::error!("Could not process vertical edge: {:?}", edge);
                     false
                 } else {
@@ -306,6 +306,7 @@ impl<Num: Scalar> Algorithm<Num> {
 fn intersection_event<Num: Scalar>(line1: &BoEdge<Num>, line2: &BoEdge<Num>) -> Option<Event<Num>> {
     // tell if the lines even can be intersected
     if line1.highest_x.x <= line2.lowest_x.x {
+        tracing::trace!("Intersection is impossible due to bounds of x coordinate");
         return None;
     }
 
@@ -313,14 +314,18 @@ fn intersection_event<Num: Scalar>(line1: &BoEdge<Num>, line2: &BoEdge<Num>) -> 
     if line1.segment.line.point == line2.segment.line.point
         && line1.segment.line.vector == line2.segment.line.vector
     {
+        tracing::trace!("Intersection is impossible due to equal lines");
         return None;
     }
 
     // compare slopes to ensure the event is valid by using slopes to
     // try to see if the intersection has already occurred
     match Slope::from_line(line1.segment.line).partial_cmp(&Slope::from_line(line2.segment.line)) {
-        Some(cmp::Ordering::Greater) => {}
-        _ => return None,
+        Some(cmp::Ordering::Less) => {}
+        cmp => {
+            tracing::trace!("Intersection occurred due to out-of-order slope: {:?}", cmp);
+            return None;
+        }
     }
 
     // calculate the intersection point
@@ -341,6 +346,7 @@ fn intersection_event<Num: Scalar>(line1: &BoEdge<Num>, line2: &BoEdge<Num>) -> 
             edge: line1.segment,
         })
     } else {
+        tracing::trace!("Intersection is outside of bounds");
         None
     }
 }

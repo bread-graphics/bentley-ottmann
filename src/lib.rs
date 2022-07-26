@@ -37,6 +37,9 @@
 //! the [`bentley_ottmann_events`] function, which iterates over *all*
 //! of the events instead of just intersections, more useful.
 //!
+//! This crate also provides tesselation procedures based on the
+//! Bentley-Ottmann algorithm. See [`trapezoids`] for more information.
+//!
 //! ## Examples
 //!
 //! ```rust
