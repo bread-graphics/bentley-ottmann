@@ -42,30 +42,6 @@ const TEST_EDGE: Edge<f32> = Edge {
     direction: Direction::Forward,
 };
 
-fn make_test_bo_edge(edge: Line<f32>, id: NonZeroUsize) -> BoEdge<f32> {
-    let swap_edges = edge.point.y > edge.point.y + edge.vector.y;
-
-    let (p1, p2) = if swap_edges {
-        (edge.point, edge.point + edge.vector)
-    } else {
-        (edge.point + edge.vector, edge.point)
-    };
-
-    BoEdge::from_edge(
-        Edge {
-            line: edge,
-            top: p1.y,
-            bottom: p2.y,
-            direction: if swap_edges {
-                Direction::Backwards
-            } else {
-                Direction::Forward
-            },
-        },
-        id,
-    )
-}
-
 #[test]
 fn test_approx_eq() {
     assert!(approx_eq(0.0, 0.0));
@@ -75,10 +51,7 @@ fn test_approx_eq() {
 
 #[test]
 fn test_x_for_y() {
-    let line = Line {
-        point: Point2D::new(0.0, 0.0),
-        vector: Vector2D::new(1.0, 2.0),
-    };
+    let line = TEST_LINE; 
 
     assert_eq!(x_for_y(&line, 0.0), 0.0);
     assert_eq!(x_for_y(&line, 2.0), 1.0);

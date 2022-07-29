@@ -86,6 +86,8 @@ use num_traits::Bounded;
 mod algorithm;
 mod compare;
 
+pub(crate) mod utils;
+
 /// The whole point.
 ///
 /// This function iterates over the intersections between the given
@@ -116,10 +118,7 @@ pub fn bentley_ottmann_events<Num: Scalar + Bounded + Default>(
     segments: impl IntoIterator<Item = Edge<Num>>,
 ) -> BentleyOttmann<Num> {
     BentleyOttmann {
-        inner: algorithm::Algorithm::new(segments.into_iter(), {
-            // doesn't matter, we're not tesselating
-            FillRule::Winding
-        }),
+        inner: algorithm::Algorithm::new(segments.into_iter(), ()),
     }
 }
 
@@ -143,10 +142,7 @@ pub struct Event<Num> {
     /// The point that this event is associated with.
     pub point: Point2D<Num>,
     /// The index of the edge that this event is associated with.
-    ///
-    /// It is shifted up by one so that we can take advantage
-    /// of niching the `NonZeroUsize` structure.
-    pub edge_id: NonZeroUsize,
+    edge_id: NonZeroUsize,
 }
 
 /// The type of event that may occur in the Bentley-Ottmann algorithm.
@@ -160,20 +156,18 @@ pub enum EventType<Num> {
     Intersection {
         /// The other edge we intersect with.
         other_edge: Edge<Num>,
-        /// The other ID of the edge we intersect with.
-        other_edge_id: NonZeroUsize,
     },
 }
 
-pub struct BentleyOttmann<Num> {
-    inner: algorithm::Algorithm<Num>,
+pub struct BentleyOttmann<Num: Scalar> {
+    inner: algorithm::Algorithm<Num, algorithm::NoTrapezoids>,
 }
 
 impl<Num: Scalar> Iterator for BentleyOttmann<Num> {
     type Item = Event<Num>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next_event::<false>()
+        self.inner.next_event()
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -185,19 +179,19 @@ impl<Num: Scalar> Iterator for BentleyOttmann<Num> {
 
 impl<Num: Scalar> FusedIterator for BentleyOttmann<Num> {}
 
-pub struct Trapezoids<Num> {
-    inner: algorithm::Algorithm<Num>,
+pub struct Trapezoids<Num: Scalar> {
+    inner: algorithm::Algorithm<Num, algorithm::Trapezoids<Num>>,
 }
 
 impl<Num: Scalar> Iterator for Trapezoids<Num> {
     type Item = Trapezoid<Num>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next_trap()
+        self.inner.next_trapezoid()
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let traps = self.inner.pending_traps();
+        let traps = self.inner.trapezoid_len();
         (
             traps,
             Some(traps.saturating_add(self.inner.queue_len().saturating_mul(2))),

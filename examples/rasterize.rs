@@ -17,8 +17,9 @@
 
 use bentley_ottmann::trapezoids;
 use fastrand::Rng;
-use geometry::{Angle, Edge, Line, Point2D, Trapezoid, Vector2D, Polygon, Size2D, FillRule};
+use geometry::{Angle, Edge, FillRule, Line, Point2D, Polygon, Size2D, Trapezoid, Vector2D};
 use image::{Rgba, RgbaImage};
+use std::env;
 
 fn main() {
     tracing_subscriber::fmt::init();
@@ -31,29 +32,106 @@ fn main() {
 
     // generate a shape and then tesselate it
     let rng = Rng::new();
-    let shape = generate_shape(center, &rng);
+    let variation = env::args_os()
+        .nth(1)
+        .and_then(|a| a.to_str().map(|s| s.to_string()));
+    let shape = if variation.as_deref() == Some("rect") {
+        generate_rectangle(center)
+    } else if variation.as_deref() == Some("triangle") {
+        generate_triangle(center)
+    } else if variation.as_deref() == Some("t") {
+        generate_t(center)
+    } else {
+        generate_shape(center, &rng)
+    };
     let traps = trapezoids(shape, FillRule::Winding);
 
-    for trap in traps {
-        tracing::debug!("Yielded trapezoid: {:#?}", trap);
+    for (i, trap) in traps.enumerate() {
+        tracing::debug!("Yielded trapezoid #{}: {:#?}", i, trap);
         draw_trapezoid(&mut img, Rgba([255, 0, 0, 255]), trap);
     }
 
     tracing::info!("Finished tesselating shape");
 
     // display the image in an SDL window
-    imageproc::window::display_image("Rasterized Shape", &img, image_size.width, image_size.height);
+    imageproc::window::display_image(
+        "Rasterized Shape",
+        &img,
+        image_size.width,
+        image_size.height,
+    );
+}
+
+/// Generate a polygon consisting of a simple rectangle.
+fn generate_rectangle(center: Point2D<f32>) -> Polygon {
+    let size = Size2D::new(100.0, 100.0);
+    let origin = center;
+    let p1 = origin + Vector2D::new(size.width, 0.0);
+    let p2 = origin + Vector2D::new(0.0, size.height);
+    let p3 = origin + Vector2D::new(size.width, size.height);
+
+    let mut polygon = Polygon::default();
+    polygon.add_edge(origin, p1);
+    polygon.add_edge(p1, p3);
+    polygon.add_edge(p3, p2);
+    polygon.add_edge(p2, origin);
+    polygon
+}
+
+/// Generate a polygon consisting of a "T".
+fn generate_t(center: Point2D<f32>) -> Polygon {
+    let size = Size2D::new(100.0, 100.0);
+    let t_height = 20.0;
+    let t_stem = 20.0;
+
+    let p1 = Point2D::new(100.0, 100.0);
+    let p2 = Point2D::new(300.0, 100.0);
+    let p3 = Point2D::new(300.0, 200.0);
+    let p4 = Point2D::new(250.0, 200.0);
+    let p5 = Point2D::new(250.0, 300.0);
+    let p6 = Point2D::new(150.0, 300.0);
+    let p7 = Point2D::new(150.0, 200.0);
+    let p8 = Point2D::new(100.0, 200.0);
+
+    let mut polygon = Polygon::default();
+    polygon.add_edge(p1, p2);
+    polygon.add_edge(p2, p3);
+    polygon.add_edge(p3, p4);
+    polygon.add_edge(p4, p5);
+    polygon.add_edge(p5, p6);
+    polygon.add_edge(p6, p7);
+    polygon.add_edge(p7, p8);
+    polygon.add_edge(p8, p1);
+    polygon
+}
+
+/// Generate a polygon consisting of a simple triangle.
+fn generate_triangle(center: Point2D<f32>) -> Polygon {
+    let size = Size2D::new(100.0, 100.0);
+    let origin = center;
+    let p1 = origin + Vector2D::new(size.width, size.height);
+    let p2 = origin + Vector2D::new(-size.width, size.height);
+
+    let mut polygon = Polygon::default();
+    polygon.add_edge(origin, p1);
+    polygon.add_edge(p1, p2);
+    polygon.add_edge(p2, origin);
+    polygon
 }
 
 /// Generate a random shape in the rough form of a circle.
 fn generate_shape(center: Point2D<f32>, rng: &Rng) -> Polygon {
-    //let mut last_point = None;
+    const MAX_SIDES: usize = 60;
+
+    let mut last_point = None;
     let mut polygon = Polygon::default();
 
-    /*for i in 0..60 {
+    for i in 0..MAX_SIDES {
+        let angle = (i as f32 / MAX_SIDES as f32) * 2.0 * std::f32::consts::PI;
+
         // generate a random point around cos(x), sin(x)
-        let mut x = (i as f32).cos() * (center.x / 2.0);
-        let mut y = (i as f32).sin() * (center.y / 2.0);
+        let mut x = angle.cos() * (center.x / 2.0);
+        let mut y = angle.sin() * (center.y / 2.0);
         x += center.x;
         y += center.y;
         let mut root = Point2D::new(x, y);
@@ -67,7 +145,9 @@ fn generate_shape(center: Point2D<f32>, rng: &Rng) -> Polygon {
 
         // figure out how we edit the polygon
         match &mut last_point {
-            pt @ None => { *pt = Some(root); }
+            pt @ None => {
+                *pt = Some(root);
+            }
             Some(ref mut pt) => {
                 // add the edge consisting of the current and last point,
                 // then set the last point to the current point
@@ -75,11 +155,7 @@ fn generate_shape(center: Point2D<f32>, rng: &Rng) -> Polygon {
                 *pt = root;
             }
         }
-    }*/
-    polygon.add_edge(Point2D::new(100.0, 100.0), Point2D::new(200.0, 100.0));
-    polygon.add_edge(Point2D::new(200.0, 100.0), Point2D::new(200.0, 200.0));
-    polygon.add_edge(Point2D::new(200.0, 200.0), Point2D::new(100.0, 200.0));
-    polygon.add_edge(Point2D::new(100.0, 200.0), Point2D::new(100.0, 100.0));
+    }
 
     polygon
 }

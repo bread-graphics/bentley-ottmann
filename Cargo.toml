@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 num-traits = { version = "0.2.15", default-features = false }
 tracing = { version = "0.1.35", default-features = false }
+tinyvec = "1.6.0"
 
 [dependencies.geometry]
 package = "chalkboard-geometry"

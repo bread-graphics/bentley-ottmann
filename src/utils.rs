@@ -15,17 +15,16 @@
 // Public License along with bentley-ottmann. If not, see
 // <https://www.gnu.org/licenses/>.
 
-use bentley_ottmann::bentley_ottmann_events;
-use geometry::{Direction, Edge, Line, Point2D, Vector2D};
+//! Various utility functions.
 
-fn main() {
-    tracing_subscriber::fmt::init();
+use geometry::Scalar;
 
-    let edges = vec![
-        Edge::new(Point2D::new(0.0, 0.0), Point2D::new(1.0, 2.0)),
-        Edge::new(Point2D::new(0.0, 2.0), Point2D::new(1.0, 0.0)),
-    ];
+/// Are two values approximately equal to eachother?
+pub(crate) fn approx_eq<Num: Scalar>(a: Num, b: Num) -> bool {
+    (a - b).abs() < Num::EPSILON
+}
 
-    let events = bentley_ottmann_events(edges).collect::<Vec<_>>();
-    println!("{:#?}", events);
+/// Are two values not approximately equal to eachother?
+pub(crate) fn approx_neq<Num: Scalar>(a: Num, b: Num) -> bool {
+    !approx_eq(a, b)
 }
