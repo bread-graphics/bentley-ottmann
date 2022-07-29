@@ -135,10 +135,13 @@ impl LinkedList {
     ///
     /// Panics if the edge is the last element in the linked list.
     pub(super) fn swap<'all, Num: Copy>(&mut self, edge: &BoEdge<Num>, all: &'all Edges<Num>) {
-        let next = all.get(
-            edge.next()
-                .expect("edge is the last element in the linked list"),
-        );
+        let next = all.get(match edge.next() {
+            Some(next) => next,
+            None => {
+                tracing::error!("edge should never be the removed from the list");
+                return;
+            }
+        });
         let prev = edge.prev();
         let next_next = next.next();
 

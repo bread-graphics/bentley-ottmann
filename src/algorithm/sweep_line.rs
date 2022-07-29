@@ -16,12 +16,12 @@
 // <https://www.gnu.org/licenses/>.
 
 use super::{edge::Edges, BoEdge, LinkedList};
+use alloc::vec::Vec;
 use core::{
     cmp,
     iter::{self, FusedIterator},
     mem,
 };
-use alloc::vec::Vec;
 use geometry::{Direction, FillRule, Scalar, Trapezoid};
 use tinyvec::ArrayVec;
 

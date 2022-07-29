@@ -17,7 +17,7 @@
 
 use bentley_ottmann::trapezoids;
 use fastrand::Rng;
-use geometry::{Angle, Edge, FillRule, Line, Point2D, Polygon, Size2D, Trapezoid, Vector2D};
+use geometry::{Angle, Edge, FillRule, Line, Point2D, Polygon, Size2D, Trapezoid, Vector2D, PathBuilder, Path};
 use image::{Rgba, RgbaImage};
 use std::env;
 
@@ -41,6 +41,8 @@ fn main() {
         generate_triangle(center)
     } else if variation.as_deref() == Some("t") {
         generate_t(center)
+    } else if variation.as_deref() == Some("x") {
+        generate_x()
     } else {
         generate_shape(center, &rng)
     };
@@ -119,7 +121,25 @@ fn generate_triangle(center: Point2D<f32>) -> Polygon {
     polygon
 }
 
-/// Generate a random shape in the rough form of a circle.
+/// Generate a large red "X".
+fn generate_x() -> Polygon {
+    let mut builder = Path::builder();
+    builder.begin(Point2D::new(100.0, 100.0));
+    builder.line_to(Point2D::new(120.0, 80.0));
+    builder.line_to(Point2D::new(200.0, 150.0));
+    builder.line_to(Point2D::new(280.0, 80.0));
+    builder.line_to(Point2D::new(300.0, 100.0));
+    builder.line_to(Point2D::new(220.0, 170.0));
+    builder.line_to(Point2D::new(300.0, 200.0));
+    builder.line_to(Point2D::new(280.0, 220.0));
+    builder.line_to(Point2D::new(200.0, 300.0));
+    builder.line_to(Point2D::new(120.0, 220.0));
+    builder.line_to(Point2D::new(100.0, 200.0));
+    builder.end(true);
+    builder.build().into()
+}
+
+/// Generate a circle 
 fn generate_shape(center: Point2D<f32>, rng: &Rng) -> Polygon {
     const MAX_SIDES: usize = 60;
 
@@ -137,11 +157,11 @@ fn generate_shape(center: Point2D<f32>, rng: &Rng) -> Polygon {
         let mut root = Point2D::new(x, y);
 
         // add random noise
-        let noise_x = (center.x / 3.0) * (rng.f32() * 2.0 - 1.0);
-        let noise_y = (center.y / 3.0) * (rng.f32() * 2.0 - 1.0);
+        //let noise_x = (center.x / 3.0) * (rng.f32() * 2.0 - 1.0);
+        //let noise_y = (center.y / 3.0) * (rng.f32() * 2.0 - 1.0);
 
-        root.x += noise_x;
-        root.y += noise_y;
+        //root.x += noise_x;
+        //root.y += noise_y;
 
         // figure out how we edit the polygon
         match &mut last_point {

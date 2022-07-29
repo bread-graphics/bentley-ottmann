@@ -86,6 +86,17 @@ impl<Num: Scalar, Var: Variant<Num>> Algorithm<Num, Var> {
     pub(crate) fn new(segments: impl Iterator<Item = Edge<Num>>, input: Var::Input) -> Self {
         // collect the edges into a vector
         let edges: Edges<Num> = segments
+            .filter(|edge| {
+                if edge.line.vector.y.abs() >= Num::EPSILON {
+                    true
+                } else {
+                    tracing::error!(
+                        "Ignoring edge with zero-length vector: {:?}",
+                        edge
+                    );
+                    false
+                }
+            })
             .enumerate()
             .map(|(i, segment)| {
                 BoEdge::from_edge(
@@ -102,10 +113,7 @@ impl<Num: Scalar, Var: Variant<Num>> Algorithm<Num, Var> {
             .map(|edge| edge.start_event())
             .collect();
 
-        tracing::trace!(
-            "Collected segments into BO Edge structures: {:#?}",
-            &edges
-        );
+        tracing::trace!("Collected segments into BO Edge structures: {:#?}", &edges);
 
         Self {
             edges,
@@ -125,10 +133,7 @@ impl<Num: Scalar, Var: Variant<Num>> Algorithm<Num, Var> {
         // pop an event from the event queue
         let event = self.event_queue.pop()?;
 
-        tracing::trace!(
-            "Encountered event: {:#?}",
-            &event
-        );
+        tracing::trace!("Encountered event: {:#?}", &event);
 
         // if the Y coordinate is different from the last Y coordinate,
         // we need to emit one or more trapezoids
