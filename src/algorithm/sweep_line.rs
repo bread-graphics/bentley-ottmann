@@ -15,6 +15,8 @@
 // Public License along with bentley-ottmann. If not, see
 // <https://www.gnu.org/licenses/>.
 
+use crate::utils::approx_eq;
+
 use super::{edge::Edges, BoEdge, LinkedList};
 use alloc::vec::Vec;
 use core::{
@@ -70,13 +72,20 @@ impl<Num: Scalar> SweepLine<Num> {
         let ax = a.x_at_y(self.current_y());
         let bx = b.x_at_y(self.current_y());
 
-        match ax.partial_cmp(&bx) {
-            Some(cmp::Ordering::Equal) => {
-                // compare by their bottom Y values
-                a.edge().bottom.partial_cmp(&b.edge().bottom)
-            }
-            x => x,
-        }
+        Partial::from(approx_cmp(ax, bx))
+            .or_else(|| {
+                // if X and Y is equal, order by the top point's x
+                let ax = a.lowest_y().x;
+                let bx = b.lowest_y().x;
+                approx_cmp(ax, bx)
+            })
+            .or_else(|| {
+                // order by the bottom point's x
+                let ax = a.highest_y().x;
+                let bx = b.highest_y().x;
+                approx_cmp(ax, bx)
+            })
+            .into()
     }
 
     /// Add an edge to the active sweep line.
@@ -138,9 +147,59 @@ impl<Num: Scalar> SweepLine<Num> {
     ) -> impl FusedIterator<Item = Trapezoid<Num>> + 'all {
         let current_y = self.current_y;
 
+        if cfg!(debug_assertions) {
+            tracing::debug!(
+                "Edges in active set: {:?}",
+                self.active.iter(all).map(|e| e.id()).collect::<Vec<_>>()
+            );
+        }
+
         self.active.pairs(all).filter_map(move |current| {
             let (left, right) = current;
+            tracing::debug!(
+                "Creating trapezoid between {} and {}",
+                left.id(),
+                right.id()
+            );
             left.start_trapezoid(right, current_y, all)
         })
+    }
+}
+
+/// Partial comparison monad for the sweep line.
+/// 
+/// Makes chaining `PartialOrd` implementations easier.
+#[derive(Copy, Clone)]
+struct Partial {
+    inner: Option<cmp::Ordering>,
+}
+
+impl From<Option<cmp::Ordering>> for Partial {
+    fn from(inner: Option<cmp::Ordering>) -> Self {
+        Partial { inner }
+    }
+}
+
+impl From<Partial> for Option<cmp::Ordering> {
+    fn from(partial: Partial) -> Self {
+        partial.inner
+    }
+}
+
+impl Partial {
+    fn or_else<F: FnOnce() -> Option<cmp::Ordering>>(self, f: F) -> Self {
+        match self.inner {
+            Some(cmp::Ordering::Equal) => f().into(),
+            o => o.into(),
+        }
+    }
+}
+
+/// Needed to fix certain shapes.
+fn approx_cmp<Num: Scalar>(a: Num, b: Num) -> Option<cmp::Ordering> {
+    if approx_eq(a, b) {
+        Some(cmp::Ordering::Equal)
+    } else {
+        a.partial_cmp(&b)
     }
 }

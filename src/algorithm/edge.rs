@@ -109,18 +109,6 @@ impl<Num: Copy> BoEdge<Num> {
         self.next.set(next);
     }
 
-    /// Complete the trapezoid for this edge at a given Y value.
-    pub(super) fn complete_trapezoid(
-        &self,
-        bottom: Num,
-        all: &Edges<Num>,
-    ) -> Option<Trapezoid<Num>> {
-        self.trapezoid
-            .borrow_mut()
-            .take()
-            .map(|trap| trap.complete(self.id(), bottom, all))
-    }
-
     /// Tell whether or not we have a pending trapezoid.
     pub(super) fn pending_trapezoid(&self) -> bool {
         self.trapezoid.borrow().is_some()
@@ -153,6 +141,18 @@ impl<Num: Copy> BoEdge<Num> {
 }
 
 impl<Num: Scalar> BoEdge<Num> {
+    /// Complete the trapezoid for this edge at a given Y value.
+    pub(super) fn complete_trapezoid(
+        &self,
+        bottom: Num,
+        all: &Edges<Num>,
+    ) -> Option<Trapezoid<Num>> {
+        self.trapezoid
+            .borrow_mut()
+            .take()
+            .and_then(|trap| trap.complete(self.id(), bottom, all))
+    }
+
     /// Create a `BoEdge` from two points.
     ///
     /// Only used in testing.
@@ -216,7 +216,7 @@ impl<Num: Scalar> BoEdge<Num> {
             } else {
                 // otherwise, we need to end the trapezoid
                 // hopefully the rust compiler can optimize out the unwrap
-                completed_trap = Some(trap.take().unwrap().complete(self.id(), top, all));
+                completed_trap = trap.take().unwrap().complete(self.id(), top, all);
             }
         };
 
@@ -264,18 +264,29 @@ impl<Num: Scalar> BoEdge<Num> {
     }
 }
 
-impl<Num: Copy> PartialTrapezoid<Num> {
+impl<Num: Copy + PartialOrd> PartialTrapezoid<Num> {
     /// Complete this trapezoid.
-    fn complete(self, left_edge: NonZeroUsize, bottom: Num, all: &Edges<Num>) -> Trapezoid<Num> {
+    fn complete(
+        self,
+        left_edge: NonZeroUsize,
+        bottom: Num,
+        all: &Edges<Num>,
+    ) -> Option<Trapezoid<Num>> {
         let Self { right_edge, top } = self;
         let left = all.get(left_edge);
         let right = all.get(right_edge);
 
-        Trapezoid {
-            top,
-            bottom,
-            left: left.edge().line,
-            right: right.edge().line,
+        // if the bottom comes before the top, this trapezoid
+        // is invalid
+        if bottom < top {
+            None
+        } else {
+            Some(Trapezoid {
+                top,
+                bottom,
+                left: left.edge().line,
+                right: right.edge().line,
+            })
         }
     }
 }

@@ -17,9 +17,21 @@
 
 use bentley_ottmann::trapezoids;
 use fastrand::Rng;
-use geometry::{Angle, Edge, FillRule, Line, Point2D, Polygon, Size2D, Trapezoid, Vector2D, PathBuilder, Path};
+use geometry::{
+    Angle, Edge, FillRule, Line, Path, PathBuilder, Point2D, Polygon, Size2D, Trapezoid, Vector2D, PathBuffer,
+};
 use image::{Rgba, RgbaImage};
 use std::env;
+
+const COLORS: &[Rgba<u8>] = &[
+    Rgba([255, 0, 0, 255]),
+    Rgba([0, 255, 0, 255]),
+    Rgba([0, 0, 255, 255]),
+    Rgba([255, 255, 0, 255]),
+    Rgba([255, 0, 255, 255]),
+    Rgba([0, 255, 255, 255]),
+    Rgba([0, 0, 0, 255]),
+];
 
 fn main() {
     tracing_subscriber::fmt::init();
@@ -43,14 +55,19 @@ fn main() {
         generate_t(center)
     } else if variation.as_deref() == Some("x") {
         generate_x()
+    } else if variation.as_deref() == Some("o") {
+        generate_shape(center, true)
     } else {
-        generate_shape(center, &rng)
+        generate_shape(center, false)
     };
     let traps = trapezoids(shape, FillRule::Winding);
 
     for (i, trap) in traps.enumerate() {
+        // select a color
+        let color = COLORS[i % COLORS.len()];
+
         tracing::debug!("Yielded trapezoid #{}: {:#?}", i, trap);
-        draw_trapezoid(&mut img, Rgba([255, 0, 0, 255]), trap);
+        draw_trapezoid(&mut img, color, trap);
     }
 
     tracing::info!("Finished tesselating shape");
@@ -130,54 +147,54 @@ fn generate_x() -> Polygon {
     builder.line_to(Point2D::new(280.0, 80.0));
     builder.line_to(Point2D::new(300.0, 100.0));
     builder.line_to(Point2D::new(220.0, 170.0));
-    builder.line_to(Point2D::new(300.0, 200.0));
-    builder.line_to(Point2D::new(280.0, 220.0));
-    builder.line_to(Point2D::new(200.0, 300.0));
-    builder.line_to(Point2D::new(120.0, 220.0));
-    builder.line_to(Point2D::new(100.0, 200.0));
+    builder.line_to(Point2D::new(300.0, 240.0));
+    builder.line_to(Point2D::new(280.0, 260.0));
+    builder.line_to(Point2D::new(200.0, 190.0));
+    builder.line_to(Point2D::new(120.0, 260.0));
+    builder.line_to(Point2D::new(100.0, 240.0));
+    builder.line_to(Point2D::new(180.0, 170.0));
+    builder.line_to(Point2D::new(100.0, 100.0));
     builder.end(true);
     builder.build().into()
 }
 
-/// Generate a circle 
-fn generate_shape(center: Point2D<f32>, rng: &Rng) -> Polygon {
+/// Generate a circle
+fn generate_shape(center: Point2D<f32>, inside: bool) -> Polygon {
     const MAX_SIDES: usize = 60;
 
-    let mut last_point = None;
-    let mut polygon = Polygon::default();
+    let mut circle = PathBuffer::default();
+    let mut add_circle = |radius: f32| {
+        let mut builder = circle.builder();
 
-    for i in 0..MAX_SIDES {
-        let angle = (i as f32 / MAX_SIDES as f32) * 2.0 * std::f32::consts::PI;
+        let mut started = false;
 
-        // generate a random point around cos(x), sin(x)
-        let mut x = angle.cos() * (center.x / 2.0);
-        let mut y = angle.sin() * (center.y / 2.0);
-        x += center.x;
-        y += center.y;
-        let mut root = Point2D::new(x, y);
+        for i in 0..MAX_SIDES {
+            let angle = (i as f32 / MAX_SIDES as f32) * 2.0 * std::f32::consts::PI;
 
-        // add random noise
-        //let noise_x = (center.x / 3.0) * (rng.f32() * 2.0 - 1.0);
-        //let noise_y = (center.y / 3.0) * (rng.f32() * 2.0 - 1.0);
+            // generate a random point around cos(x), sin(x)
+            let mut x = angle.cos() * (center.x / radius);
+            let mut y = angle.sin() * (center.y / radius);
+            x += center.x;
+            y += center.y;
+            let root = Point2D::new(x, y);
 
-        //root.x += noise_x;
-        //root.y += noise_y;
-
-        // figure out how we edit the polygon
-        match &mut last_point {
-            pt @ None => {
-                *pt = Some(root);
-            }
-            Some(ref mut pt) => {
-                // add the edge consisting of the current and last point,
-                // then set the last point to the current point
-                polygon.add_edge(*pt, root);
-                *pt = root;
+            if !started {
+                builder.begin(root);
+                started = true;
+            } else {
+                builder.line_to(root);
             }
         }
-    }
 
-    polygon
+        builder.end(true);
+        builder.build();
+    };
+
+    add_circle(2.0);
+    if inside {
+        add_circle(4.0);
+    }
+    circle.into()
 }
 
 /// Draw a trapezoid to an image.

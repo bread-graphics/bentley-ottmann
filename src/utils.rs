@@ -17,7 +17,12 @@
 
 //! Various utility functions.
 
-use geometry::Scalar;
+use geometry::{Point2D, Scalar};
+
+/// Are two points approximately equal?
+pub fn approx_eq_point<Num: Scalar>(a: Point2D<Num>, b: Point2D<Num>) -> bool {
+    approx_eq(a.x, b.x) && approx_eq(a.y, b.y)
+}
 
 /// Are two values approximately equal to eachother?
 pub(crate) fn approx_eq<Num: Scalar>(a: Num, b: Num) -> bool {

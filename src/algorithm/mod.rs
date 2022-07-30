@@ -20,7 +20,10 @@ mod linked_list;
 mod priority_queue;
 mod sweep_line;
 
-use crate::{utils::approx_neq, EventType};
+use crate::{
+    utils::{approx_eq_point, approx_neq},
+    EventType,
+};
 use alloc::vec::Vec;
 use core::num::NonZeroUsize;
 use edge::{BoEdge, Edges};
@@ -66,7 +69,7 @@ pub(crate) trait Variant<Num: Scalar>: Sized {
     fn handle_start_event(sw: &mut SweepLine<Num>, edge: &BoEdge<Num>, all: &Edges<Num>);
 }
 
-/// We are not concerned about trapezoids in this algorithm.\
+/// We are not concerned about trapezoids in this algorithm.
 #[derive(Debug)]
 pub(crate) struct NoTrapezoids;
 
@@ -90,10 +93,7 @@ impl<Num: Scalar, Var: Variant<Num>> Algorithm<Num, Var> {
                 if edge.line.vector.y.abs() >= Num::EPSILON {
                     true
                 } else {
-                    tracing::error!(
-                        "Ignoring edge with zero-length vector: {:?}",
-                        edge
-                    );
+                    tracing::warn!("Ignoring horizontal edge: {:?}", edge);
                     false
                 }
             })
@@ -131,9 +131,25 @@ impl<Num: Scalar, Var: Variant<Num>> Algorithm<Num, Var> {
     /// Get the next event in the algorithm.
     pub(crate) fn next_event(&mut self) -> Option<Event<Num>> {
         // pop an event from the event queue
-        let event = self.event_queue.pop()?;
+        let event = loop {
+            let event = self.event_queue.pop()?;
 
-        tracing::trace!("Encountered event: {:#?}", &event);
+            tracing::trace!("Encountered event: {:#?}", &event);
+
+            // the event may be a spurious edgepoint intersection, ignore it
+            if matches!(event.event_type, EventType::Intersection { .. }) {
+                let edge = self.edges.get(event.edge_id);
+
+                if approx_eq_point(event.point, edge.lowest_y())
+                    || approx_eq_point(event.point, edge.highest_y())
+                {
+                    tracing::trace!("Ignoring spurious edgepoint intersection: {:?}", &event);
+                    continue;
+                }
+            }
+
+            break event;
+        };
 
         // if the Y coordinate is different from the last Y coordinate,
         // we need to emit one or more trapezoids
@@ -255,7 +271,10 @@ impl<Num: Scalar> Algorithm<Num, Trapezoids<Num>> {
                                 self.sweep_line
                                     .take_leftovers(&self.edges)
                                     .filter_map(|edge| {
-                                        tracing::trace!("Completing trapezoid for: {}", edge.id());
+                                        tracing::debug!(
+                                            "Completing leftover trapezoid for: {}",
+                                            edge.id()
+                                        );
                                         edge.complete_trapezoid(edge.edge().bottom, &self.edges)
                                     }),
                             );
