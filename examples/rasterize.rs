@@ -16,10 +16,7 @@
 // <https://www.gnu.org/licenses/>.
 
 use bentley_ottmann::trapezoids;
-use fastrand::Rng;
-use geometry::{
-    Angle, Edge, FillRule, Line, Path, PathBuilder, Point2D, Polygon, Size2D, Trapezoid, Vector2D, PathBuffer,
-};
+use geometry::{FillRule, Path, PathBuffer, Point2D, Polygon, Size2D, Trapezoid, Vector2D};
 use image::{Rgba, RgbaImage};
 use std::env;
 
@@ -43,7 +40,6 @@ fn main() {
     let mut img = RgbaImage::new(image_size.width, image_size.height);
 
     // generate a shape and then tesselate it
-    let rng = Rng::new();
     let variation = env::args_os()
         .nth(1)
         .and_then(|a| a.to_str().map(|s| s.to_string()));
@@ -52,7 +48,7 @@ fn main() {
     } else if variation.as_deref() == Some("triangle") {
         generate_triangle(center)
     } else if variation.as_deref() == Some("t") {
-        generate_t(center)
+        generate_t()
     } else if variation.as_deref() == Some("x") {
         generate_x()
     } else if variation.as_deref() == Some("o") {
@@ -98,11 +94,7 @@ fn generate_rectangle(center: Point2D<f32>) -> Polygon {
 }
 
 /// Generate a polygon consisting of a "T".
-fn generate_t(center: Point2D<f32>) -> Polygon {
-    let size = Size2D::new(100.0, 100.0);
-    let t_height = 20.0;
-    let t_stem = 20.0;
-
+fn generate_t() -> Polygon {
     let p1 = Point2D::new(100.0, 100.0);
     let p2 = Point2D::new(300.0, 100.0);
     let p3 = Point2D::new(300.0, 200.0);

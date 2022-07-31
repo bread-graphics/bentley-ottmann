@@ -19,13 +19,8 @@ use crate::utils::approx_eq;
 
 use super::{edge::Edges, BoEdge, LinkedList};
 use alloc::vec::Vec;
-use core::{
-    cmp,
-    iter::{self, FusedIterator},
-    mem,
-};
-use geometry::{Direction, FillRule, Scalar, Trapezoid};
-use tinyvec::ArrayVec;
+use core::{cmp, iter::FusedIterator, mem};
+use geometry::{FillRule, Scalar, Trapezoid};
 
 /// The sweep line, currently traversing the edges.
 ///
@@ -142,7 +137,7 @@ impl<Num: Scalar> SweepLine<Num> {
     /// of edges.
     pub(super) fn trapezoids<'all>(
         &self,
-        fill_rule: FillRule,
+        _fill_rule: FillRule,
         all: &'all Edges<Num>,
     ) -> impl FusedIterator<Item = Trapezoid<Num>> + 'all {
         let current_y = self.current_y;
@@ -167,7 +162,7 @@ impl<Num: Scalar> SweepLine<Num> {
 }
 
 /// Partial comparison monad for the sweep line.
-/// 
+///
 /// Makes chaining `PartialOrd` implementations easier.
 #[derive(Copy, Clone)]
 struct Partial {

@@ -38,11 +38,6 @@ pub(super) struct LinkedListIter<'all, Num> {
 pub(super) struct LinkedListPairIter<'all, Num>(LinkedListIter<'all, Num>);
 
 impl LinkedList {
-    /// Get the head of the linked list.
-    pub(super) fn head(&self) -> Option<NonZeroUsize> {
-        self.root
-    }
-
     /// Get an iterator over this list.
     pub(super) fn iter<'all, Num>(&self, edges: &'all Edges<Num>) -> LinkedListIter<'all, Num> {
         LinkedListIter {

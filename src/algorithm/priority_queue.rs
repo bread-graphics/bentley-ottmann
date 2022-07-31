@@ -17,7 +17,10 @@
 
 use crate::Event;
 use alloc::collections::BinaryHeap;
-use core::cmp::{Ordering::Equal, Reverse};
+use core::{
+    cmp::{Ordering::Equal, Reverse},
+    iter::FromIterator,
+};
 use geometry::Scalar;
 
 /// The priority queue for events used in the algorithm.

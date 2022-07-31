@@ -16,7 +16,7 @@
 // <https://www.gnu.org/licenses/>.
 
 use bentley_ottmann::bentley_ottmann_events;
-use geometry::{Direction, Edge, Line, Point2D, Vector2D};
+use geometry::{Edge, Point2D};
 
 fn main() {
     tracing_subscriber::fmt::init();

@@ -22,7 +22,7 @@ mod sweep_line;
 
 use crate::{
     utils::{approx_eq_point, approx_neq},
-    EventType,
+    Event, EventType,
 };
 use alloc::vec::Vec;
 use core::num::NonZeroUsize;
@@ -32,7 +32,44 @@ use linked_list::LinkedList;
 use priority_queue::PriorityQueue;
 use sweep_line::SweepLine;
 
-use crate::Event;
+/*
+
+Explanation of the algorithm used in this crate.
+
+This is a modified form of the Bentley-Ottmann algorithm, which is used
+to find the intersections of a set of line segments in O((n log k) log n)
+time. It is modified in many ways. For instance, the main algorithm
+traverses events in sorted X order, while this algorithm traverses events
+in sorted Y order. The most crucial modification is that the algorithm
+preforms tesselation on the line segments as it operates. The tesselation
+is believed not to affect the runtime. The main advantage of preforming
+tesselation like this instead of with other strategies (such as the one
+used in the XRender library) is that it supports self-intersecting
+polygons.
+
+The Bentley-Ottmann algorithm functions by sorting "events", made up
+of start events, stop events and intersection events, into a priority
+queue. Each type of event may yield more intersection events based on
+whether or not adjacent lines intersect. The algorithm maintains a
+"sweep line" at a given Y coordinate and an "active set", which is the
+set of all lines that intersect with the sweep line. In this crate, the
+active set is represented by a linked list due to the relatively safe
+and easy implementation, but it could be more efficiently represented
+as a binary tree.
+
+Tesselation into trapezoids involves dividing the lines in the active
+set into pairs, and then creating trapezoids with the top and bottom
+edges defined as the previous sweep line and the current sweep line
+respectively. Since the Bentley-Ottmann algorithm already maintains an
+active set, we can piggyback off of it to create trapezoids.
+
+Note that the approach used here is taken from libcairo, with some
+modifications made for safety and the availability of priority queues
+within the standard library. To this point, I consider this library
+a derivative work of libcairo, hence why I licensed it under the LGPL
+instead of my usual M.O. of the BSL.
+
+*/
 
 /// The internal algorithm used to compute intersections and,
 /// potentially, trapezoids.
@@ -77,6 +114,14 @@ pub(crate) struct NoTrapezoids;
 #[derive(Debug)]
 pub(crate) struct Trapezoids<Num> {
     /// The list of trapezoids to return.
+    /// 
+    /// TODO: get rid of this allocation. since trapezoidification
+    /// is separate from the algorithm, theoretically we could
+    /// make it so we just store an "index" into the pairs we've
+    /// created and then iterate over trapezoids based on that,
+    /// but that's too complicated for now, and it's not like this
+    /// array is the bottleneck compared to the linked lists and
+    /// priority queues above
     trapezoids: Vec<Trapezoid<Num>>,
     /// Have we fused together the leftovers yet?
     fused_leftovers: bool,
@@ -189,7 +234,7 @@ impl<Num: Scalar, Var: Variant<Num>> Algorithm<Num, Var> {
             let prev = edge
                 .prev()
                 .map(|prev| self.edges.get(prev))
-                .and_then(|prev| prev.intersection_event(edge));
+                .and_then(|prev| intersection_event(prev, edge));
             let next = edge
                 .next()
                 .map(|next| self.edges.get(next))
@@ -267,16 +312,15 @@ impl<Num: Scalar> Algorithm<Num, Trapezoids<Num>> {
                         } else {
                             self.variant.fused_leftovers = true;
 
+                            let edges = &self.edges;
                             self.variant.trapezoids.extend(
-                                self.sweep_line
-                                    .take_leftovers(&self.edges)
-                                    .filter_map(|edge| {
-                                        tracing::debug!(
-                                            "Completing leftover trapezoid for: {}",
-                                            edge.id()
-                                        );
-                                        edge.complete_trapezoid(edge.edge().bottom, &self.edges)
-                                    }),
+                                self.sweep_line.take_leftovers(edges).filter_map(|edge| {
+                                    tracing::debug!(
+                                        "Completing leftover trapezoid for: {}",
+                                        edge.id()
+                                    );
+                                    edge.complete_trapezoid(edge.edge().bottom, edges)
+                                }),
                             );
 
                             Some(())
@@ -301,7 +345,29 @@ fn intersection_event<Num: Scalar>(e1: &BoEdge<Num>, e2: &BoEdge<Num>) -> Option
         return None;
     }
 
-    e1.intersection_event(e2)
+    // if this will be a spurious intersection event, eat it
+    e1.intersection_event(e2).filter(|ev| {
+        let pt = ev.point;
+        let (e1l, e1h) = (e1.lowest_y(), e1.highest_y());
+        let (e2l, e2h) = (e2.lowest_y(), e2.highest_y());
+
+        let endpoints_equal = [
+            approx_eq_point(e1l, e2l),
+            approx_eq_point(e1h, e2h),
+            approx_eq_point(e1h, e2l),
+            approx_eq_point(e1l, e2h),
+        ];
+
+        // if any of the segment points are equal, check to ensure
+        // we aren't spurious
+        let eq_point = match endpoints_equal {
+            [true, _, _, _] | [_, _, _, true] => e1l,
+            [_, true, _, _] | [_, _, true, _] => e1h,
+            _ => return true,
+        };
+
+        !approx_eq_point(eq_point, pt)
+    })
 }
 
 impl<Num: Scalar> Variant<Num> for NoTrapezoids {
@@ -328,15 +394,16 @@ impl<Num: Scalar> Variant<Num> for Trapezoids<Num> {
         if approx_neq(alg.sweep_line.current_y(), new_y) {
             // we may need to iterate over the stopped lines to
             // see if there are any trapezoids we can use
+            let edges = &alg.edges;
             let leftover_edges = alg
                 .sweep_line
                 .take_leftovers(&alg.edges)
-                .filter_map(|edge| edge.complete_trapezoid(edge.edge().bottom, &alg.edges));
+                .filter_map(|edge| edge.complete_trapezoid(edge.edge().bottom, edges));
 
             // combine that with the traps that the sweep line may be
             // generating for us
             alg.variant.trapezoids.extend(
-                leftover_edges.chain(alg.sweep_line.trapezoids(alg.variant.fill_rule, &alg.edges)),
+                leftover_edges.chain(alg.sweep_line.trapezoids(alg.variant.fill_rule, edges)),
             );
         }
     }
