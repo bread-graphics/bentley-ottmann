@@ -198,3 +198,5 @@ impl<Num: Scalar> Iterator for Trapezoids<Num> {
         )
     }
 }
+
+impl<Num: Scalar> FusedIterator for Trapezoids<Num> {}
